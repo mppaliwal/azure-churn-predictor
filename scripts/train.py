@@ -1,8 +1,15 @@
 # FILE: scripts/train.py
 
+import sys
+import os
+# --- THIS IS THE FIX ---
+# Add the project's root directory to the Python path
+# This allows the script to find the 'src' module
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# --------------------
+
 import pandas as pd
 import argparse
-import os
 from io import StringIO
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
@@ -11,7 +18,6 @@ from src.churn_pipeline import ChurnModelPipeline
 def download_blob_to_dataframe(storage_account, container, blob_name):
     """Connects to Azure Blob Storage and downloads a blob into a pandas DataFrame."""
     account_url = f"https://{storage_account}.blob.core.windows.net"
-    # DefaultAzureCredential will use your 'az login' credentials
     credential = DefaultAzureCredential()
     blob_service_client = BlobServiceClient(account_url, credential=credential)
     blob_client = blob_service_client.get_blob_client(container=container, blob=blob_name)
@@ -32,7 +38,6 @@ def run_training(storage_account, container, crm_blob, tickets_blob, model_outpu
     pipeline = ChurnModelPipeline(model_type='xgb')
     pipeline.train(crm_df, tickets_df)
 
-    # Ensure the output directory exists
     os.makedirs(os.path.dirname(model_output_path), exist_ok=True)
     pipeline.save(model_output_path)
 
