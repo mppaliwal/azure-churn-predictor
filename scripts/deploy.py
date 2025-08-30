@@ -2,28 +2,27 @@
 
 import sys
 import os
-# --- THIS IS THE FIX ---
 # Add the project's root directory to the Python path
-# This allows the script to find the 'src' module if needed in the future
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-# --------------------
 
 import argparse
 from azure.ai.ml import MLClient
 from azure.ai.ml.entities import Model, ManagedOnlineEndpoint, ManagedOnlineDeployment, CodeConfiguration, Environment
 from azure.identity import DefaultAzureCredential
 
-def run_deployment(workspace, resource_group, model_name, endpoint_name, model_path):
+def run_deployment(subscription_id, resource_group, workspace, model_name, endpoint_name, model_path):
     """
     Connects to Azure ML and deploys the trained churn model.
     """
     print("--- Starting Manual Deployment Process ---")
     credential = DefaultAzureCredential()
+
+    # Create a client to connect to your Azure ML workspace
     ml_client = MLClient(
         credential=credential,
-        workspace_name=workspace,
+        subscription_id=subscription_id,
         resource_group_name=resource_group,
-        subscription_id=None
+        workspace_name=workspace
     )
 
     # 1. Register the Model
@@ -49,13 +48,10 @@ def run_deployment(workspace, resource_group, model_name, endpoint_name, model_p
 
     # 3. Create the Deployment
     print("Creating a new deployment for the endpoint...")
-    env = Environment(
-        name="churn-prod-env",
-        image="mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04",
-        conda_file=None,
-        pip_requirements_file="requirements.txt"
-    )
-
+    
+    # --- THIS IS THE FIX ---
+    # We define the Environment directly inside the deployment object
+    # instead of creating a separate 'env' variable. This avoids the bug.
     blue_deployment = ManagedOnlineDeployment(
         name="blue",
         endpoint_name=endpoint_name,
@@ -64,10 +60,16 @@ def run_deployment(workspace, resource_group, model_name, endpoint_name, model_p
             code="./src",
             scoring_script="score.py"
         ),
-        environment=env,
+        environment=Environment(
+            name="churn-prod-env",
+            image="mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04",
+            pip_requirements_file="requirements.txt"
+        ),
         instance_type="Standard_DS2_v2",
         instance_count=1
     )
+    # --------------------
+    
     ml_client.online_deployments.begin_create_or_update(blue_deployment).wait()
     print("✅ Deployment created.")
 
@@ -80,6 +82,7 @@ def run_deployment(workspace, resource_group, model_name, endpoint_name, model_p
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--subscription-id', type=str, required=True, help='Your Azure Subscription ID.')
     parser.add_argument('--workspace', type=str, required=True, help='Your Azure ML workspace name.')
     parser.add_argument('--resource-group', type=str, required=True, help='Your Azure resource group name.')
     parser.add_argument('--model-name', type=str, default='churn-predictor', help='A name for the registered model.')
@@ -89,8 +92,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     run_deployment(
-        workspace=args.workspace,
+        subscription_id=args.subscription_id,
         resource_group=args.resource_group,
+        workspace=args.workspace,
         model_name=args.model_name,
         endpoint_name=args.endpoint_name,
         model_path=args.model_path
